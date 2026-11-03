@@ -1,0 +1,463 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Runaway Button</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;700&family=DM+Mono:wght@500&display=swap">
+<style>
+/* Layout: one centered column. Stats strip on top, a big arena in the middle, taunt line below. */
+:root {
+  --bg: #eceff7;
+  --fg: #151a2e;
+  --muted: #5a6280;
+  --arena: #ffffff;
+  --line: #cfd5e6;
+  --accent: #ff4a3a;
+  --accent-fg: #ffffff;
+  --decoy: #7a6cf0;
+  --good: #14a46b;
+  --font-display: "Fredoka", "Trebuchet MS", system-ui, sans-serif;
+  --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12151f; --fg: #edf0fa; --muted: #98a0bd; --arena: #1b2133; --line: #2c3450;
+    --accent: #ff6254; --accent-fg: #1a0a08; --decoy: #9d92ff; --good: #38d39a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12151f; --fg: #edf0fa; --muted: #98a0bd; --arena: #1b2133; --line: #2c3450;
+  --accent: #ff6254; --accent-fg: #1a0a08; --decoy: #9d92ff; --good: #38d39a;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(30px, 7vw, 46px);
+  line-height: 1.05;
+  margin: 0;
+  text-wrap: balance;
+}
+.sub { margin: 4px 0 0; color: var(--muted); }
+
+.stats { display: flex; gap: 10px; flex-wrap: wrap; }
+.stat {
+  flex: 1 1 90px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  background: var(--arena);
+}
+.stat .label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.stat .val { font-family: var(--font-mono); font-size: 26px; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.stat.low .val { color: var(--accent); }
+.pips { display: flex; gap: 5px; align-items: center; height: 31px; }
+.pip { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); transition: opacity 0.15s; }
+.pip.off { opacity: 0.18; }
+
+.arena {
+  position: relative;
+  height: clamp(340px, 58vh, 520px);
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--arena);
+  overflow: hidden;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.target, .decoy {
+  position: absolute;
+  font-family: var(--font-display);
+  font-weight: 700;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: left 0.14s ease-out, top 0.14s ease-out, width 0.2s, height 0.2s;
+}
+.target {
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 15px;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.22);
+}
+.target:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0, 0, 0, 0.22); }
+.target.tired { animation: wobble 0.35s infinite; }
+.decoy {
+  background: var(--decoy);
+  color: var(--accent-fg);
+  font-size: 14px;
+  opacity: 0.9;
+  width: 74px;
+  height: 40px;
+}
+:root:not([data-theme="dark"]) .decoy { color: #fff; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .decoy { color: #14123a; } }
+:root[data-theme="dark"] .decoy { color: #14123a; }
+button:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+@keyframes wobble { 0%, 100% { rotate: -4deg; } 50% { rotate: 4deg; } }
+
+.overlay {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; text-align: center;
+  padding: 20px;
+  background: color-mix(in srgb, var(--arena) 90%, transparent);
+  z-index: 5;
+}
+.overlay h2 { font-family: var(--font-display); font-size: clamp(26px, 6vw, 38px); margin: 0; text-wrap: balance; }
+.overlay p { margin: 0; color: var(--muted); max-width: 40ch; }
+.go {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  background: var(--fg);
+  color: var(--bg);
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 30px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+.taunt {
+  min-height: 2.6em;
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  text-align: center;
+  text-wrap: balance;
+}
+.taunt.good { color: var(--good); }
+.tips { color: var(--muted); font-size: 14px; margin: 0; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) {
+  .target, .decoy { transition: none; }
+  .target.tired { animation: none; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Runaway Button</h1>
+    <p class="sub">Catch the red button before the 30 seconds run out. It does not want to be caught.</p>
+  </header>
+
+  <div class="stats">
+    <div class="stat"><div class="label">Caught</div><div class="val" id="score">0</div></div>
+    <div class="stat" id="timeStat"><div class="label">Seconds</div><div class="val" id="time">30.0</div></div>
+    <div class="stat"><div class="label">Level</div><div class="val" id="level">1</div></div>
+    <div class="stat"><div class="label">Its energy</div><div class="pips" id="pips" aria-label="Button energy"></div></div>
+    <div class="stat"><div class="label">Best</div><div class="val" id="best">0</div></div>
+  </div>
+
+  <div class="arena" id="arena">
+    <button class="target" id="target" type="button">CATCH ME</button>
+    <div class="overlay" id="overlay">
+      <h2 id="ovTitle">Can you catch it?</h2>
+      <p id="ovText">Get close and it jumps away. Every jump tires it out. When it wobbles, it is tired. That is your moment.</p>
+      <button class="go" id="start" type="button">Start</button>
+    </div>
+  </div>
+
+  <p class="taunt" id="taunt" aria-live="polite">Press Start when you feel brave.</p>
+  <p class="tips">Level 3 and up: purple decoy buttons appear. Clicking one costs you a point.</p>
+</div>
+
+<script>
+(function () {
+  var ROUND_SECONDS = 30;
+  var TIRED_MS = 1500;
+
+  var arena = document.getElementById("arena");
+  var target = document.getElementById("target");
+  var overlay = document.getElementById("overlay");
+  var startBtn = document.getElementById("start");
+  var ovTitle = document.getElementById("ovTitle");
+  var ovText = document.getElementById("ovText");
+  var scoreEl = document.getElementById("score");
+  var timeEl = document.getElementById("time");
+  var timeStat = document.getElementById("timeStat");
+  var levelEl = document.getElementById("level");
+  var bestEl = document.getElementById("best");
+  var pipsEl = document.getElementById("pips");
+  var tauntEl = document.getElementById("taunt");
+
+  var DODGE_TAUNTS = [
+    "Too slow!", "Nice try.", "Missed me!", "Is that all you have?", "I am not even trying.",
+    "Whoops, I moved.", "Your finger smells like defeat.", "Hehe, over here!", "Not today.",
+    "Did you blink?", "I have been practicing.", "So close. Not really."
+  ];
+  var TIRED_TAUNTS = ["I need a nap...", "Too... much... running...", "Okay, okay, I give up!", "Cannot... feel... legs..."];
+  var CATCH_TAUNTS = ["Ow! You got me!", "Fine. You win this one.", "Unfair! I was resting!", "Gotcha!", "Wow, rude."];
+  var DECOY_TAUNTS = ["That was a decoy! Minus one.", "Ha! Wrong button.", "I am not the real one!", "Fooled you."];
+  var DECOY_LABELS = ["CATCH ME", "ME!", "HERE", "CLICK"];
+
+  var best = 0;
+  try { best = parseInt(localStorage.getItem("runaway-best") || "0", 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  var state = { playing: false, score: 0, left: ROUND_SECONDS, stamina: 6, maxStamina: 6, tired: false, tiredTimer: null, ticker: null, last: 0, decoys: [] };
+
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+  function level() { return 1 + Math.floor(state.score / 3); }
+  function maxStaminaFor(l) { return Math.max(2, 7 - l); }
+  function dodgeRadius() { return Math.min(150, 80 + level() * 12); }
+  function btnSize() {
+    var w = Math.max(60, 120 - (level() - 1) * 9);
+    return { w: w, h: Math.round(w * 0.52) };
+  }
+
+  function say(text, good) {
+    tauntEl.textContent = text;
+    tauntEl.className = "taunt" + (good ? " good" : "");
+  }
+
+  function renderPips() {
+    var html = "";
+    for (var i = 0; i < state.maxStamina; i++) {
+      html += '<span class="pip' + (i < state.stamina ? "" : " off") + '"></span>';
+    }
+    pipsEl.innerHTML = html;
+  }
+
+  function sizeTarget() {
+    var s = btnSize();
+    target.style.width = s.w + "px";
+    target.style.height = s.h + "px";
+  }
+
+  function place(el, w, h, avoidX, avoidY, minDist) {
+    var r = arena.getBoundingClientRect();
+    var maxX = Math.max(0, r.width - w - 8);
+    var maxY = Math.max(0, r.height - h - 8);
+    var bestX = 4, bestY = 4, bestD = -1;
+    for (var i = 0; i < 14; i++) {
+      var x = 4 + Math.random() * maxX;
+      var y = 4 + Math.random() * maxY;
+      var d = (avoidX == null) ? 1e9 : Math.hypot(x + w / 2 - avoidX, y + h / 2 - avoidY);
+      if (d > bestD) { bestD = d; bestX = x; bestY = y; }
+      if (minDist && d >= minDist) { break; }
+    }
+    el.style.left = bestX + "px";
+    el.style.top = bestY + "px";
+  }
+
+  function targetCenter() {
+    return { x: target.offsetLeft + target.offsetWidth / 2, y: target.offsetTop + target.offsetHeight / 2 };
+  }
+
+  function clearDecoys() {
+    state.decoys.forEach(function (d) { d.remove(); });
+    state.decoys = [];
+  }
+
+  function spawnDecoys() {
+    clearDecoys();
+    var count = level() >= 3 ? Math.min(level() - 2, 4) : 0;
+    var c = targetCenter();
+    for (var i = 0; i < count; i++) {
+      var d = document.createElement("button");
+      d.type = "button";
+      d.className = "decoy";
+      d.textContent = pick(DECOY_LABELS);
+      place(d, 74, 40, c.x, c.y, 120);
+      d.addEventListener("click", onDecoy);
+      arena.appendChild(d);
+      state.decoys.push(d);
+    }
+  }
+
+  function flee(px, py) {
+    if (state.tired || !state.playing) return;
+    var s = btnSize();
+    var r = arena.getBoundingClientRect();
+    var maxX = Math.max(0, r.width - s.w - 8);
+    var maxY = Math.max(0, r.height - s.h - 8);
+    var bestX = 4, bestY = 4, bestD = -1;
+    for (var i = 0; i < 14; i++) {
+      var x = 4 + Math.random() * maxX;
+      var y = 4 + Math.random() * maxY;
+      var d = Math.hypot(x + s.w / 2 - px, y + s.h / 2 - py);
+      if (d > bestD) { bestD = d; bestX = x; bestY = y; }
+    }
+    target.style.left = bestX + "px";
+    target.style.top = bestY + "px";
+    state.stamina -= 1;
+    renderPips();
+    if (state.stamina <= 0) {
+      becomeTired();
+    } else {
+      say(pick(DODGE_TAUNTS), false);
+    }
+  }
+
+  function becomeTired() {
+    state.tired = true;
+    target.classList.add("tired");
+    target.textContent = "zzz";
+    say(pick(TIRED_TAUNTS), false);
+    clearTimeout(state.tiredTimer);
+    state.tiredTimer = setTimeout(function () {
+      if (!state.playing) return;
+      state.tired = false;
+      state.stamina = state.maxStamina;
+      target.classList.remove("tired");
+      target.textContent = "CATCH ME";
+      renderPips();
+      say("I am rested. Come get me.", false);
+    }, TIRED_MS);
+  }
+
+  function pointerPos(e) {
+    var r = arena.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  function nearTarget(p) {
+    var c = targetCenter();
+    return Math.hypot(p.x - c.x, p.y - c.y) < dodgeRadius();
+  }
+
+  arena.addEventListener("pointermove", function (e) {
+    if (!state.playing || state.tired) return;
+    var p = pointerPos(e);
+    if (nearTarget(p)) flee(p.x, p.y);
+  });
+
+  target.addEventListener("pointerdown", function (e) {
+    if (!state.playing) return;
+    if (!state.tired) {
+      e.preventDefault();
+      var p = pointerPos(e);
+      flee(p.x, p.y);
+    }
+  });
+
+  target.addEventListener("click", function (e) {
+    if (!state.playing) return;
+    var viaKeyboard = e.detail === 0;
+    if (state.tired || viaKeyboard) catchIt();
+  });
+
+  function catchIt() {
+    clearTimeout(state.tiredTimer);
+    state.tired = false;
+    target.classList.remove("tired");
+    target.textContent = "CATCH ME";
+    state.score += 1;
+    state.maxStamina = maxStaminaFor(level());
+    state.stamina = state.maxStamina;
+    scoreEl.textContent = state.score;
+    levelEl.textContent = level();
+    sizeTarget();
+    var c = targetCenter();
+    place(target, btnSize().w, btnSize().h, c.x, c.y, 160);
+    spawnDecoys();
+    renderPips();
+    say(pick(CATCH_TAUNTS), true);
+  }
+
+  function onDecoy(e) {
+    if (!state.playing) return;
+    state.score = Math.max(0, state.score - 1);
+    scoreEl.textContent = state.score;
+    levelEl.textContent = level();
+    var d = e.currentTarget;
+    var c = targetCenter();
+    place(d, 74, 40, c.x, c.y, 120);
+    say(pick(DECOY_TAUNTS), false);
+  }
+
+  function tick() {
+    var now = performance.now();
+    state.left -= (now - state.last) / 1000;
+    state.last = now;
+    if (state.left <= 0) { endRound(); return; }
+    timeEl.textContent = state.left.toFixed(1);
+    timeStat.classList.toggle("low", state.left <= 5);
+  }
+
+  function startRound() {
+    state.playing = true;
+    state.score = 0;
+    state.left = ROUND_SECONDS;
+    state.maxStamina = maxStaminaFor(1);
+    state.stamina = state.maxStamina;
+    state.tired = false;
+    clearTimeout(state.tiredTimer);
+    target.classList.remove("tired");
+    target.textContent = "CATCH ME";
+    scoreEl.textContent = "0";
+    levelEl.textContent = "1";
+    timeEl.textContent = ROUND_SECONDS.toFixed(1);
+    timeStat.classList.remove("low");
+    clearDecoys();
+    sizeTarget();
+    place(target, btnSize().w, btnSize().h, null, null, 0);
+    target.style.display = "";
+    renderPips();
+    overlay.hidden = true;
+    say("Go go go!", false);
+    state.last = performance.now();
+    clearInterval(state.ticker);
+    state.ticker = setInterval(tick, 100);
+  }
+
+  function endRound() {
+    clearInterval(state.ticker);
+    clearTimeout(state.tiredTimer);
+    state.playing = false;
+    timeEl.textContent = "0.0";
+    clearDecoys();
+    var s = state.score;
+    var newBest = s > best;
+    if (newBest) {
+      best = s;
+      bestEl.textContent = best;
+      try { localStorage.setItem("runaway-best", String(best)); } catch (e) {}
+    }
+    var rating;
+    if (s === 0) rating = "The button is laughing at you.";
+    else if (s < 4) rating = "Warming up. The button is mildly nervous.";
+    else if (s < 8) rating = "Respectable. The button has started sweating.";
+    else if (s < 12) rating = "Impressive. The button wants a rematch.";
+    else rating = "Legendary. The button is filing a complaint.";
+    ovTitle.textContent = "Time! You caught " + s + (s === 1 ? " button" : " buttons");
+    ovText.textContent = (newBest && s > 0 ? "New best score! " : "") + rating;
+    startBtn.textContent = "Play again";
+    overlay.hidden = false;
+    say(newBest && s > 0 ? "New record. Do not let it go to your head." : "Round over.", newBest && s > 0);
+    startBtn.focus();
+  }
+
+  startBtn.addEventListener("click", startRound);
+
+  /* Resting state before the first round */
+  state.maxStamina = maxStaminaFor(1);
+  state.stamina = state.maxStamina;
+  sizeTarget();
+  target.style.left = "calc(50% - 60px)";
+  target.style.top = "30px";
+  renderPips();
+})();
+</script>
+
+</body></html>
